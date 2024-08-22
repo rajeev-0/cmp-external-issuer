@@ -225,3 +225,5 @@ $(ENVTEST): $(LOCALBIN)
 kind: $(LOCALBIN) ## Download Kind locally if necessary.
 	curl -fsSL -o ${KIND} https://github.com/kubernetes-sigs/kind/releases/download/v${KIND_VERSION}/kind-${LOCAL_OS}-${LOCAL_ARCH}
 	chmod +x ${KIND}
+
+print-%  : ; @echo $* = $($*)
