@@ -1,4 +1,4 @@
-package main
+package signer
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -15,9 +16,39 @@ import (
 	"os"
 	"reflect"
 	"time"
+
+	sampleissuerapi "github.com/cert-manager/sample-external-issuer/api/v1alpha1"
 )
 
-func main() {
+type HealthChecker interface {
+	Check() error
+}
+
+type HealthCheckerBuilder func(*sampleissuerapi.IssuerSpec, map[string][]byte) (HealthChecker, error)
+
+type Signer interface {
+	Sign([]byte) ([]byte, error)
+}
+
+type SignerBuilder func(*sampleissuerapi.IssuerSpec, map[string][]byte) (Signer, error)
+
+func ExampleHealthCheckerFromIssuerAndSecretData(*sampleissuerapi.IssuerSpec, map[string][]byte) (HealthChecker, error) {
+	return &exampleSigner{}, nil
+}
+
+func ExampleSignerFromIssuerAndSecretData(*sampleissuerapi.IssuerSpec, map[string][]byte) (Signer, error) {
+	return &exampleSigner{}, nil
+}
+
+type exampleSigner struct {
+}
+
+func (o *exampleSigner) Check() error {
+	return nil
+}
+
+func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
+
 	senderCommonName := "CloudCA-Integration-Test-User"
 	senderDN := Name{
 		[]pkix.AttributeTypeAndValue{
@@ -37,40 +68,46 @@ func main() {
 	randomSenderNonce := createRandom(16)
 	randomRecipNonce := createRandom(16)
 
-	csr := `-----BEGIN CERTIFICATE REQUEST-----
-MIIEwDCCAqgCAQAwGzEZMBcGA1UEAxMQdGVzdC5leGFtcGxlLmNvbTCCAiIwDQYJ
-KoZIhvcNAQEBBQADggIPADCCAgoCggIBAJYtP4iLdUBt96pl3Exrz/UXzSuTsZ+i
-f7cnoFz+DyzS3+6pPLSS7o37g8xxZlqJecY6CfDeLY40maFIsHM4CgkVldwdy4F7
-SByFwVZseozGoWGOSSD2ceSMA6qgKmgSRUqwumLJdOJqc5bDQYQqPYabp66hrm9q
-VNGlC33XPJ5btITCTwWp+3LNcUYdAPDsMSY/MF8ejExITKjj8M/Xt82vSxY4VNl8
-kkSvwmOSSdfzpyl1MN9+zVslUyGJywQyV4vcLqJrM9C32nnh1SY4oE000GTGSbIa
-w5kolzrsSBVmLxuNhrgrg4IHZMaYn1OtrI3yVUXuAU0CENHfpUo20CBjTt43ReBo
-2HXPoWbxULUOqIDQQELl3ZMOxjt7owXfm5go7EsqMKbPAKtHGuFZkVe/C6JYheWQ
-nl0mGC2yfhEix3zviReTmocLLWAeTz3bVO3+jD3aKliv/RA1zyYIwWycAZuVJ17o
-e2ceBnHM0/ccO/3giERqHIn+u8hUduCRIo+S1bEB6/Mf91QYFX63uPkYzs4TW/1I
-3pklIOiYCbedVORs+U7GMcgPMOa6+oZHYsd2Q/kFly7K0RfhY/g/YTGkLW4LhXSU
-/lplOSZEasTrz5az8cdJK4JL8OAfCe6qN6gKMNNhTJC3AYVa0ATbazGvQdkEHCNn
-mFr4VRwVfV2zAgMBAAGgYDBeBgkqhkiG9w0BCQ4xUTBPMAwGA1UdEwEB/wQCMAAw
-HQYDVR0OBBYEFIa6xq2GOW+R3JVCWZMwTadF7m+2MAsGA1UdDwQEAwIDuDATBgNV
-HSUEDDAKBggrBgEFBQcDAjANBgkqhkiG9w0BAQ0FAAOCAgEAkiXuuU3/dXh3fYX2
-agt3JoJ8+GmPSVLvLbwiCkxNnJkI28gpn0BROO+QGUSHRSVaoUM1/GYb1XpXQvDd
-LIC5ZC/jlXpC5/PcnvCOQu3YJmEQeDub6YrFcFLMkf1dhOBfEywrEZwfyQ/2tNUZ
-FU9yiW0gF015651y8Xl0WMCCi8nsZ19o8MI2zzzafvpyk0M66IYq1GpRM4MzHcnf
-YzA4RygZwlrf1fiMjPrzY0oh3U53M1ejGBoAAHSqNJ0rf02FU0U+5M8SaoById8v
-ITgegC1Gsga/ox41Leiiinqudije+BX66wze/ZnjKFMfjlg2vBQChzyrTOZ07U2w
-T7v8Ey0Go0meB7sjyaKVrJiinI95Woyk/JrvUbTXW6lSVBiTkj+PKQGaGT3otIDo
-8HWI35EWs0FoKndUh3MznvsnRycf+7cPoS3prVThmA+bxS1z+pMFwYRFhl63OCQP
-kCDAJsS9LESD2wDIrv7Hmxu9SAVwqmil8KMNlwGbBj+MzE9OUUTmL7BQYujVVV8i
-MdBk6ysluKbfbolzkPKZxdZHs9YsC3szT8a7U1OY/tABBrF3D6cbEJFZgscuZFgW
-LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
-1qrQsPB5Gv8K5COmC9b7VY4czB4=
------END CERTIFICATE REQUEST-----
-`
-	certificateRequest, _ := pem.Decode([]byte(csr))
-	if certificateRequest == nil {
-		log.Fatal("failed to decode PEM block containing the CSR")
+	/*
+	   	csr := `-----BEGIN CERTIFICATE REQUEST-----
+	   MIIEwDCCAqgCAQAwGzEZMBcGA1UEAxMQdGVzdC5leGFtcGxlLmNvbTCCAiIwDQYJ
+	   KoZIhvcNAQEBBQADggIPADCCAgoCggIBAJYtP4iLdUBt96pl3Exrz/UXzSuTsZ+i
+	   f7cnoFz+DyzS3+6pPLSS7o37g8xxZlqJecY6CfDeLY40maFIsHM4CgkVldwdy4F7
+	   SByFwVZseozGoWGOSSD2ceSMA6qgKmgSRUqwumLJdOJqc5bDQYQqPYabp66hrm9q
+	   VNGlC33XPJ5btITCTwWp+3LNcUYdAPDsMSY/MF8ejExITKjj8M/Xt82vSxY4VNl8
+	   kkSvwmOSSdfzpyl1MN9+zVslUyGJywQyV4vcLqJrM9C32nnh1SY4oE000GTGSbIa
+	   w5kolzrsSBVmLxuNhrgrg4IHZMaYn1OtrI3yVUXuAU0CENHfpUo20CBjTt43ReBo
+	   2HXPoWbxULUOqIDQQELl3ZMOxjt7owXfm5go7EsqMKbPAKtHGuFZkVe/C6JYheWQ
+	   nl0mGC2yfhEix3zviReTmocLLWAeTz3bVO3+jD3aKliv/RA1zyYIwWycAZuVJ17o
+	   e2ceBnHM0/ccO/3giERqHIn+u8hUduCRIo+S1bEB6/Mf91QYFX63uPkYzs4TW/1I
+	   3pklIOiYCbedVORs+U7GMcgPMOa6+oZHYsd2Q/kFly7K0RfhY/g/YTGkLW4LhXSU
+	   /lplOSZEasTrz5az8cdJK4JL8OAfCe6qN6gKMNNhTJC3AYVa0ATbazGvQdkEHCNn
+	   mFr4VRwVfV2zAgMBAAGgYDBeBgkqhkiG9w0BCQ4xUTBPMAwGA1UdEwEB/wQCMAAw
+	   HQYDVR0OBBYEFIa6xq2GOW+R3JVCWZMwTadF7m+2MAsGA1UdDwQEAwIDuDATBgNV
+	   HSUEDDAKBggrBgEFBQcDAjANBgkqhkiG9w0BAQ0FAAOCAgEAkiXuuU3/dXh3fYX2
+	   agt3JoJ8+GmPSVLvLbwiCkxNnJkI28gpn0BROO+QGUSHRSVaoUM1/GYb1XpXQvDd
+	   LIC5ZC/jlXpC5/PcnvCOQu3YJmEQeDub6YrFcFLMkf1dhOBfEywrEZwfyQ/2tNUZ
+	   FU9yiW0gF015651y8Xl0WMCCi8nsZ19o8MI2zzzafvpyk0M66IYq1GpRM4MzHcnf
+	   YzA4RygZwlrf1fiMjPrzY0oh3U53M1ejGBoAAHSqNJ0rf02FU0U+5M8SaoById8v
+	   ITgegC1Gsga/ox41Leiiinqudije+BX66wze/ZnjKFMfjlg2vBQChzyrTOZ07U2w
+	   T7v8Ey0Go0meB7sjyaKVrJiinI95Woyk/JrvUbTXW6lSVBiTkj+PKQGaGT3otIDo
+	   8HWI35EWs0FoKndUh3MznvsnRycf+7cPoS3prVThmA+bxS1z+pMFwYRFhl63OCQP
+	   kCDAJsS9LESD2wDIrv7Hmxu9SAVwqmil8KMNlwGbBj+MzE9OUUTmL7BQYujVVV8i
+	   MdBk6ysluKbfbolzkPKZxdZHs9YsC3szT8a7U1OY/tABBrF3D6cbEJFZgscuZFgW
+	   LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
+	   1qrQsPB5Gv8K5COmC9b7VY4czB4=
+	   -----END CERTIFICATE REQUEST-----
+	   `
+	   	certificateRequest, _ := pem.Decode([]byte(csr))
+	   	if certificateRequest == nil {
+	   		log.Fatal("failed to decode PEM block containing the CSR")
+	   	}
+	   	parsedCSR, _ := x509.ParseCertificateRequest(certificateRequest.Bytes)
+	*/
+	parsedCSR, err := parseCSR(csrBytes)
+	if err != nil {
+		return nil, err
 	}
-	parsedCSR, _ := x509.ParseCertificateRequest(certificateRequest.Bytes)
 	csrPublicKey := parsedCSR.PublicKey
 
 	randomSalt := createRandom(16)
@@ -102,7 +139,7 @@ LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
 			SenderNonce:   randomSenderNonce,
 			RecipNonce:    randomRecipNonce,
 		},
-		Body: asn1.RawValue{Bytes: certificateRequest.Bytes, IsCompound: true, Class: asn1.ClassContextSpecific, Tag: PKCS10CertificationRequest},
+		Body: asn1.RawValue{Bytes: parsedCSR.Raw, IsCompound: true, Class: asn1.ClassContextSpecific, Tag: PKCS10CertificationRequest},
 	}
 
 	responseBody := sendCMPMessage(p10RequestMessage, sharedSecret, url)
@@ -111,26 +148,29 @@ LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
 	asn1.Unmarshal(responseBody, &responseMessage)
 
 	if !bytes.Equal(responseMessage.Header.TransactionID, randomTransactionID) {
-		log.Fatal("TransactionID is not equale")
+		return nil, errors.New("TransactionID is not equale")
 	}
 
 	if !bytes.Equal(randomSenderNonce, responseMessage.Header.RecipNonce) {
-		log.Fatal("Nonce is not equale")
+		return nil, errors.New("Nonce is not equale")
 	}
 
 	if responseMessage.Body.Tag != CertificationResponse {
-		log.Fatalf("Response message of type %v", responseMessage.Body.Tag)
+		errstring := fmt.Sprintf("Response message of type %v", responseMessage.Body.Tag)
+		return nil, errors.New(errstring)
 	}
 
 	var certRepMessage CertRepMessage
 	asn1.Unmarshal(responseMessage.Body.Bytes, &certRepMessage)
 
 	if len(certRepMessage.Response) != 1 {
-		log.Fatalf("Response contained %v certificates", len(certRepMessage.Response))
+		errstring := fmt.Sprintf("Response contained %v certificates", len(certRepMessage.Response))
+		return nil, errors.New(errstring)
 	}
 
 	if certRepMessage.Response[0].CertifiedKeyPair.CertOrEncCert.Tag != Certificate {
-		log.Fatalf("Response certificate of type %v", certRepMessage.Response[0].CertifiedKeyPair.CertOrEncCert.Tag)
+		errstring := fmt.Sprintf("Response certificate of type %v", certRepMessage.Response[0].CertifiedKeyPair.CertOrEncCert.Tag)
+		return nil, errors.New(errstring)
 	}
 
 	certificate, _ := x509.ParseCertificate(certRepMessage.Response[0].CertifiedKeyPair.CertOrEncCert.Bytes)
@@ -141,14 +181,14 @@ LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
 	fmt.Printf("Certificate valid until %v\n", certificate.NotAfter)
 
 	block := &pem.Block{
-		Type: "CERTIFICATE",
+		Type:    "CERTIFICATE",
 		Headers: nil,
-		Bytes: certificate.Raw,
+		Bytes:   certificate.Raw,
 	}
 	pem.Encode(os.Stdout, block)
 
 	if !reflect.DeepEqual(csrPublicKey, certificate.PublicKey) {
-		log.Fatalf("Certificate doesn't match to key provided in CSR")
+		return nil, errors.New("Certificate doesn't match to key provided in CSR")
 	}
 
 	/*
@@ -212,22 +252,27 @@ LSnod9g7TZsgTN3TY9V6xj6tERl+0/kMTcnQV55UOWAPCQqk0SrwdB9i2ebZCVgQ
 
 	certConfResponseBody := sendCMPMessage(certConfMessage, sharedSecret, url)
 
-	var certConfResponseMessage PKIMessage
-	asn1.Unmarshal(certConfResponseBody, &certConfResponseMessage)
+	var pkiConfMessage PKIMessage
+	asn1.Unmarshal(certConfResponseBody, &pkiConfMessage)
 
-	if !bytes.Equal(certConfResponseMessage.Header.TransactionID, randomTransactionID) {
-		log.Fatal("TransactionID is not equale")
+	if !bytes.Equal(pkiConfMessage.Header.TransactionID, randomTransactionID) {
+		return nil, errors.New("pkiconf TransactionID is not equale")
 	}
 
-	if !bytes.Equal(randomSenderNonce, certConfResponseMessage.Header.RecipNonce) {
-		log.Fatal("Nonce is not equale")
+	if !bytes.Equal(randomSenderNonce, pkiConfMessage.Header.RecipNonce) {
+		return nil, errors.New("pkiconf Nonce is not equale")
 	}
 
-	if certConfResponseMessage.Body.Tag != Confirmation {
-		log.Fatalf("Response message of type %v", responseMessage.Body.Tag)
+	if pkiConfMessage.Body.Tag != Confirmation {
+		errstring := fmt.Sprintf("Response message of type %v", responseMessage.Body.Tag)
+		return nil, errors.New(errstring)
 	}
 
 	fmt.Println("All done!")
+	return pem.EncodeToMemory(&pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: certificate.Raw,
+	}), nil
 }
 
 func sendCMPMessage(requestMessage PKIMessage, sharedSecret string, url string) (body []byte) {
@@ -269,4 +314,13 @@ func createRandom(n int) (randomValue []byte) {
 		log.Fatalf("Read returned unexpected n; %d != %d", nRead, n)
 	}
 	return
+}
+
+func parseCSR(pemBytes []byte) (*x509.CertificateRequest, error) {
+	// extract PEM from request object
+	block, _ := pem.Decode(pemBytes)
+	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+		return nil, errors.New("PEM block type must be CERTIFICATE REQUEST")
+	}
+	return x509.ParseCertificateRequest(block.Bytes)
 }

@@ -1,4 +1,4 @@
-package main
+package signer
 
 import (
 	"crypto"
@@ -58,10 +58,10 @@ type CertifiedKeyPair struct {
 }
 
 /*
-   CertOrEncCert ::= CHOICE {
-       certificate     [0] Certificate,
-       encryptedCert   [1] EncryptedValue
-   }
+	CertOrEncCert ::= CHOICE {
+	    certificate     [0] Certificate,
+	    encryptedCert   [1] EncryptedValue
+	}
 */
 const (
 	Certificate = iota
@@ -86,7 +86,7 @@ var (
 	oidHMACWithSHA384 = asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 10}
 	oidHMACWithSHA512 = asn1.ObjectIdentifier{1, 2, 840, 113549, 2, 11}
 
-	oidSHA1   = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
+	oidSHA1 = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26}
 
 	oidPBM = asn1.ObjectIdentifier{1, 2, 840, 113533, 7, 66, 13}
 )
@@ -119,7 +119,6 @@ var (
 	// to produce certificates with this OID.
 	oidISOSignatureSHA1WithRSA = asn1.ObjectIdentifier{1, 3, 14, 3, 2, 29}
 )
-
 
 // https://cs.opensource.google/go/go/+/refs/tags/go1.21.6:src/crypto/x509/x509.go;l=355
 var signatureAlgorithmDetails = []struct {
@@ -460,33 +459,31 @@ type PKIProtection struct{ Bytes asn1.BitString }
 type CMPCertificate any
 
 /*
-         CertStatus ::= SEQUENCE {
-            certHash    OCTET STRING,
-            certReqId   INTEGER,
-            statusInfo  PKIStatusInfo OPTIONAL
-         }
+	CertStatus ::= SEQUENCE {
+	   certHash    OCTET STRING,
+	   certReqId   INTEGER,
+	   statusInfo  PKIStatusInfo OPTIONAL
+	}
 */
 type CertStatus struct {
-	CertHash []byte
+	CertHash  []byte
 	CertReqID int
-//	StatusInfo PKIStatusInfo `asn1:"explicit,optional,omitempty"` // Not working
+	// StatusInfo PKIStatusInfo `asn1:"explicit,optional,omitempty"` // Not working
 }
 
-
 /*
-         CertConfirmContent ::= SEQUENCE OF CertStatus
+CertConfirmContent ::= SEQUENCE OF CertStatus
 */
 type CertConfirmContent []CertStatus
 
-
 /*
-      PKIMessage ::= SEQUENCE {
-         header           PKIHeader,
-         body             PKIBody,
-         protection   [0] PKIProtection OPTIONAL,
-         extraCerts   [1] SEQUENCE SIZE (1..MAX) OF CMPCertificate
-                          OPTIONAL
-	  }
+	      PKIMessage ::= SEQUENCE {
+	         header           PKIHeader,
+	         body             PKIBody,
+	         protection   [0] PKIProtection OPTIONAL,
+	         extraCerts   [1] SEQUENCE SIZE (1..MAX) OF CMPCertificate
+	                          OPTIONAL
+		  }
 */
 type PKIMessage struct {
 	Header     PKIHeader
