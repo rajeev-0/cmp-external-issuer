@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"reflect"
@@ -59,14 +58,16 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 		[]pkix.AttributeTypeAndValue{
 			{Type: oidCommonName, Value: recipientCommonName}}}
 
-	sharedSecret := "SiemensIT"
+	//sharedSecret := "SiemensIT"
+	sharedSecret := "secretcmp"
 
-	url := "https://broker.sdo-dev.siemens.cloud/.well-known/cmp"
+	//url := "https://broker.sdo-dev.siemens.cloud/.well-known/cmp"
+	url := "http://129.103.177.164:6080/ejbca/publicweb/cmp/cmp_imprint_RA"
 
-	randomTransactionID := createRandom(16)
+	randomTransactionID, _ := createRandom(16)
 
-	randomSenderNonce := createRandom(16)
-	randomRecipNonce := createRandom(16)
+	randomSenderNonce, _ := createRandom(16)
+	randomRecipNonce, _ := createRandom(16)
 
 	/*
 	   	csr := `-----BEGIN CERTIFICATE REQUEST-----
@@ -110,7 +111,7 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 	}
 	csrPublicKey := parsedCSR.PublicKey
 
-	randomSalt := createRandom(16)
+	randomSalt, _ := createRandom(16)
 
 	p10RequestMessage := PKIMessage{
 		Header: PKIHeader{
@@ -126,7 +127,7 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 						Algorithm:  oidSHA512,
 						Parameters: []byte{},
 					},
-					IterationCount: 262144,
+					IterationCount: 10000,
 					MAC: AlgorithmIdentifier{
 						Algorithm:  oidHMACWithSHA512,
 						Parameters: []byte{},
@@ -142,8 +143,11 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 		Body: asn1.RawValue{Bytes: parsedCSR.Raw, IsCompound: true, Class: asn1.ClassContextSpecific, Tag: PKCS10CertificationRequest},
 	}
 
-	responseBody := sendCMPMessage(p10RequestMessage, sharedSecret, url)
+	responseBody, cmpsenderr := sendCMPMessage(p10RequestMessage, sharedSecret, url)
 
+	if cmpsenderr != nil {
+		return nil, cmpsenderr
+	}
 	var responseMessage PKIMessage
 	asn1.Unmarshal(responseBody, &responseMessage)
 
@@ -155,8 +159,15 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 		return nil, errors.New("Nonce is not equale")
 	}
 
+	if responseMessage.Body.Tag == ErrorMessage {
+		var pkierrmsg ErrorMsgContent
+		asn1.Unmarshal(responseMessage.Body.Bytes, &pkierrmsg)
+		errstring := fmt.Sprintf("CMP Error message(23): Status : %v, %s", pkierrmsg.PKIStatusInfo.Status, pkierrmsg.PKIStatusInfo.StatusString)
+		return nil, errors.New(errstring)
+	}
+
 	if responseMessage.Body.Tag != CertificationResponse {
-		errstring := fmt.Sprintf("Response message of type %v", responseMessage.Body.Tag)
+		errstring := fmt.Sprintf("IP message of type %v", responseMessage.Body.Tag)
 		return nil, errors.New(errstring)
 	}
 
@@ -212,8 +223,8 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 	hashFunc.Write(certificate.Raw)
 	certHash := hashFunc.Sum(nil)
 
-	randomSenderNonce = createRandom(16)
-	randomSalt = createRandom(16)
+	randomSenderNonce, _ = createRandom(16)
+	randomSalt, _ = createRandom(16)
 
 	certConfMessage := PKIMessage{
 		Header: PKIHeader{
@@ -229,7 +240,7 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 						Algorithm:  oidSHA512,
 						Parameters: []byte{},
 					},
-					IterationCount: 262144,
+					IterationCount: 10000,
 					MAC: AlgorithmIdentifier{
 						Algorithm:  oidHMACWithSHA512,
 						Parameters: []byte{},
@@ -250,7 +261,10 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 		}, CertificateConfirm),
 	}
 
-	certConfResponseBody := sendCMPMessage(certConfMessage, sharedSecret, url)
+	certConfResponseBody, cmperr := sendCMPMessage(certConfMessage, sharedSecret, url)
+	if cmperr != nil {
+		return nil, cmperr
+	}
 
 	var pkiConfMessage PKIMessage
 	asn1.Unmarshal(certConfResponseBody, &pkiConfMessage)
@@ -275,43 +289,49 @@ func (o *exampleSigner) Sign(csrBytes []byte) ([]byte, error) {
 	}), nil
 }
 
-func sendCMPMessage(requestMessage PKIMessage, sharedSecret string, url string) (body []byte) {
+func sendCMPMessage(requestMessage PKIMessage, sharedSecret string, url string) (body []byte, err error) {
 	requestMessage.Protect(sharedSecret)
 
 	pkiMessageAsDER, err1 := asn1.Marshal(requestMessage)
 	if err1 != nil {
-		log.Fatalf("Error marshaling structure 1: %v", err1)
+		fmt.Errorf("Error marshaling structure 1: %v", err1)
+		return nil, err1
 	}
 
 	client := &http.Client{}
 
 	resp, err := client.Post(url, "application/pkixcmp", bytes.NewReader(pkiMessageAsDER))
 	if err != nil {
-		log.Fatalf("Error: %v", err)
+		fmt.Printf("Error: %v", err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
-		log.Fatalf("Status code %v doesn't equal 200", resp.Status)
+		fmt.Printf("Status code %v doesn't equal 200", resp.Status)
+		return nil, errors.New("Status code doesn't equal 200")
 	}
 
 	body, err = io.ReadAll(resp.Body)
 	if err != nil {
-		log.Fatalf("Error reading response body: %v", err)
+		fmt.Printf("Error reading response body: %v", err)
+		return nil, err
 	}
 
 	return
 }
 
-func createRandom(n int) (randomValue []byte) {
+func createRandom(n int) (randomValue []byte, err error) {
 	randomValue = make([]byte, n)
 	nRead, err := rand.Read(randomValue)
 
 	if err != nil {
-		log.Fatalf("Read err %v", err)
+		fmt.Printf("Read err %v", err)
+		return nil, err
 	}
 	if nRead != n {
-		log.Fatalf("Read returned unexpected n; %d != %d", nRead, n)
+		fmt.Printf("Read returned unexpected n; %d != %d", nRead, n)
+		return nil, errors.New("Read returned unexpected n")
 	}
 	return
 }
