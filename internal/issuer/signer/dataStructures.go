@@ -68,6 +68,34 @@ const (
 	EncryptedValue
 )
 
+/*
+	ErrorMsgContent ::= SEQUENCE {
+	        pKIStatusInfo          PKIStatusInfo,
+	        errorCode              INTEGER           OPTIONAL,
+	        errorDetails           PKIFreeText       OPTIONAL
+	    }
+*/
+type ErrorMsgContent struct {
+	PKIStatusInfo PKIStatusInfo
+	ErrorCode     int         `asn1:"optional,omitempty"`
+	ErrorDetails  PKIFreeText `asn1:"optional,omitempty"`
+}
+
+/*
+	PKIStatusInfo ::= SEQUENCE {
+	         status        PKIStatus,
+	         statusString  PKIFreeText     OPTIONAL,
+	         failInfo      PKIFailureInfo  OPTIONAL
+	     }
+*/
+type PKIStatusInfo struct {
+	Status       int
+	StatusString PKIFreeText    `asn1:"optional,omitempty"`
+	FailInfo     PKIFailureInfo `asn1:"optional,omitempty"`
+}
+
+type PKIFailureInfo asn1.BitString
+
 var (
 	oidCountry            = asn1.ObjectIdentifier{2, 5, 4, 6}
 	oidOrganization       = asn1.ObjectIdentifier{2, 5, 4, 10}
